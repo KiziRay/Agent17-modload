@@ -371,23 +371,40 @@ init python:
         return "%s (%d)" % (names.get(tab, tab), n)
 
 
-# 入口：底部中央小鈕（不擋開始／讀取／設定／語言／右上系統）
+# 入口：左側中間 + F10（不擋主選單開始／讀取／右上設定）
 screen full_cg_entry_button():
-    zorder 9000
+    zorder 10000
+
+    # F10 開／關圖鑑（F9 留給模組管理）
+    key "K_F10" action Function(full_cg_toggle_gallery)
 
     if full_cg_show_entry_button():
-        textbutton "CG":
-            xalign 0.5
-            yalign 1.0
-            ypos -52
-            text_size 24
-            text_color "#ffffff"
-            text_outlines [ (1, "#000000", 0, 0) ]
-            xpadding 18
-            ypadding 6
-            background "#b3324099"
-            hover_background "#e04a60"
+        # 左緣垂直中央：避開左下語言、左中開始鍵、右上系統
+        button:
+            xalign 0.0
+            yalign 0.5
+            xpos 12
+            xminimum 72
+            yminimum 120
+            padding (10, 16)
+            background "#b33240ee"
+            hover_background "#ff4060"
             action Function(full_cg_open)
+
+            vbox:
+                xalign 0.5
+                spacing 6
+                text "CG":
+                    size 28
+                    color "#ffffff"
+                    xalign 0.5
+                    bold True
+                    outlines [ (2, "#000000", 0, 0) ]
+                text "F10":
+                    size 16
+                    color "#ffdddd"
+                    xalign 0.5
+                    outlines [ (1, "#000000", 0, 0) ]
 
 
 screen full_cg_gallery():
@@ -554,18 +571,28 @@ init 999 python:
 
     def _full_cg_force_btn():
         try:
-            if not is_mod_enabled("full_cg_unlock"):
-                if renpy.get_screen("full_cg_entry_button", layer="top"):
-                    renpy.hide_screen("full_cg_entry_button", layer="top")
+            if not renpy.has_screen("full_cg_entry_button"):
                 return
+            # 一律掛在 top；是否畫出按鈕由 screen 內 is_mod_enabled 判斷
             if renpy.get_screen("full_cg_entry_button", layer="top") is None:
-                if renpy.has_screen("full_cg_entry_button"):
-                    renpy.show_screen("full_cg_entry_button", _layer="top")
+                renpy.show_screen("full_cg_entry_button", _layer="top")
         except Exception:
             pass
 
     if _full_cg_force_btn not in config.start_interact_callbacks:
         config.start_interact_callbacks.append(_full_cg_force_btn)
 
+    if _full_cg_force_btn not in config.start_callbacks:
+        config.start_callbacks.append(_full_cg_force_btn)
+
     if "full_cg_entry_button" not in config.overlay_screens:
         config.overlay_screens.append("full_cg_entry_button")
+    if "full_cg_entry_button" not in config.always_shown_screens:
+        config.always_shown_screens.append("full_cg_entry_button")
+
+    # 全域 F10
+    config.keymap["full_cg_open"] = ["K_F10"]
+    try:
+        config.underlay.append(renpy.Keymap(full_cg_open=Function(full_cg_toggle_gallery)))
+    except Exception:
+        pass

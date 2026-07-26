@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Agent17-modload",
   "description": "解鎖照片圖鑑；主介面「CG」開啟圖鑑，含照片／Nutflex劇集／直播／movie影片。缺圖顯示灰底不報錯。",
-  "default_enabled": false,
+  "default_enabled": true,
   "requires_restart": false,
   "priority": 20
 }
