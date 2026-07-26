@@ -52,9 +52,10 @@ init python:
         except Exception:
             pass
 
-    # ---------- resolve displayables safely (no "Image not found") ----------
+    # ---------- resolve displayables safely (no "Image not found" / no webm-as-image) ----------
     _full_cg_file_cache = {}
     _full_cg_all_files = None
+    _VIDEO_EXT = (".webm", ".mp4", ".mkv", ".avi", ".ogv")
 
     def _full_cg_list_files():
         global _full_cg_all_files
@@ -65,101 +66,168 @@ init python:
                 _full_cg_all_files = []
         return _full_cg_all_files
 
+    def full_cg_is_video_path(path):
+        p = str(path or "").lower().replace("\\", "/")
+        return p.endswith(_VIDEO_EXT)
+
+    def _full_cg_kind_for_path(path):
+        return "movie" if full_cg_is_video_path(path) else "file"
+
     def full_cg_find_asset(name):
-        """依名稱找 images/ 或 movie/ 資源，找不到回 None。"""
+        """依名稱找 images/ 或 movie/。回傳 (kind, path) 或 None。kind=image|file|movie"""
         if not name:
             return None
         if name in _full_cg_file_cache:
             return _full_cg_file_cache[name]
 
-        # 直接路徑
+        # 已是影片路徑
+        name_s = str(name).replace("\\", "/")
+        if full_cg_is_video_path(name_s):
+            try:
+                if renpy.loadable(name_s):
+                    _full_cg_file_cache[name] = ("movie", name_s)
+                    return _full_cg_file_cache[name]
+            except Exception:
+                pass
+
         candidates = [
-            name,
-            "images/" + name,
-            "images/" + name + ".webp",
-            "images/" + name + ".png",
-            "images/" + name + ".jpg",
-            "movie/" + name + ".webm",
-            "movie/" + name + ".mp4",
+            name_s,
+            "images/" + name_s,
+            "images/" + name_s + ".webp",
+            "images/" + name_s + ".png",
+            "images/" + name_s + ".jpg",
+            "movie/" + name_s + ".webm",
+            "movie/" + name_s + ".mp4",
+            "movie/" + name_s,
         ]
-        # 空白變底線
-        n2 = name.replace(" ", "_")
-        if n2 != name:
+        n2 = name_s.replace(" ", "_")
+        if n2 != name_s:
             candidates.extend([
                 "images/" + n2 + ".webp",
+                "images/" + n2 + ".png",
                 "movie/" + n2 + ".webm",
             ])
 
         for c in candidates:
             try:
                 if renpy.loadable(c):
-                    _full_cg_file_cache[name] = ("file", c)
+                    kind = _full_cg_kind_for_path(c)
+                    # webm 絕不可當 file/image
+                    _full_cg_file_cache[name] = (kind, c)
                     return _full_cg_file_cache[name]
             except Exception:
                 pass
 
-        # 已註冊 image tag
         try:
-            if renpy.has_image(name, exact=False):
-                _full_cg_file_cache[name] = ("image", name)
+            if renpy.has_image(name_s, exact=False):
+                _full_cg_file_cache[name] = ("image", name_s)
                 return _full_cg_file_cache[name]
         except Exception:
             pass
 
-        # 模糊搜尋檔名
-        key = name.lower().replace(" ", "")
+        key = name_s.lower().replace(" ", "")
         best = None
         for f in _full_cg_list_files():
-            fl = f.lower().replace("\\", "/")
+            fl = f.replace("\\", "/")
             base = fl.rsplit("/", 1)[-1]
-            stem = base.rsplit(".", 1)[0].replace(" ", "")
-            if stem == key or key in stem:
-                if fl.endswith((".webp", ".png", ".jpg", ".jpeg", ".webm", ".mp4")):
-                    # prefer exact stem
+            stem = base.rsplit(".", 1)[0].replace(" ", "").lower()
+            if stem == key or (len(key) > 4 and key in stem):
+                low = fl.lower()
+                if low.endswith((".webp", ".png", ".jpg", ".jpeg") + _VIDEO_EXT):
                     if stem == key:
-                        best = f
+                        best = fl
                         break
                     if best is None:
-                        best = f
+                        best = fl
         if best:
-            kind = "movie" if best.lower().endswith((".webm", ".mp4")) else "file"
-            _full_cg_file_cache[name] = (kind, best)
+            _full_cg_file_cache[name] = (_full_cg_kind_for_path(best), best)
             return _full_cg_file_cache[name]
 
         _full_cg_file_cache[name] = None
         return None
 
     def full_cg_thumb_name(entry):
-        """entry: dict with image/thumbnail/file fields or raw string."""
         if isinstance(entry, dict):
-            for k in ("image", "thumbnail", "icon", "poster", "file"):
+            for k in ("image", "thumbnail", "icon", "poster", "file", "src"):
                 if entry.get(k):
                     return entry.get(k)
             return None
         return entry
 
-    def full_cg_displayable(name_or_entry, placeholder=True):
-        name = full_cg_thumb_name(name_or_entry)
+    def full_cg_movie(path, size=None, channel=None):
+        """建立可預覽的 Movie（絕不把 webm 當 Image）。"""
+        path = str(path).replace("\\", "/")
+        if not path:
+            return Solid("#1a1a2e")
+        try:
+            if not renpy.loadable(path):
+                return Solid("#1a1a2e")
+        except Exception:
+            return Solid("#1a1a2e")
+        # 多個縮圖同時播時 channel 必須唯一
+        if channel is None:
+            stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+            channel = "fcg_" + "".join(ch if ch.isalnum() else "_" for ch in stem)[:40]
+        try:
+            if size:
+                return Movie(play=path, channel=channel, loop=True, size=size)
+            return Movie(play=path, channel=channel, loop=True)
+        except TypeError:
+            # 舊參數相容
+            try:
+                return Movie(play=path, channel=channel, loop=True)
+            except Exception:
+                return Solid("#1a1a2e")
+        except Exception:
+            return Solid("#1a1a2e")
+
+    def full_cg_displayable(name_or_entry, placeholder=True, size=None):
+        """
+        回傳可安全 add 的 displayable。
+        - 影片一律 Movie()
+        - 靜態圖用路徑或 image name
+        - 失敗用灰底 Solid（不觸發 Image not found）
+        """
+        # 目錄項 dict
+        if isinstance(name_or_entry, dict):
+            if name_or_entry.get("kind") == "movie" or full_cg_is_video_path(name_or_entry.get("src")):
+                return full_cg_movie(name_or_entry.get("src"), size=size)
+            name = full_cg_thumb_name(name_or_entry)
+        else:
+            name = name_or_entry
+            if full_cg_is_video_path(name):
+                return full_cg_movie(name, size=size)
+
         found = full_cg_find_asset(name) if name else None
         if found:
             kind, path = found
-            if kind == "movie":
-                # 縮圖用靜態：若同名 webp 不在，用 Movie 第一幀可能失敗，改 placeholder + 標籤
-                # Ren'Py Movie as displayable works in some versions
-                try:
-                    return Movie(play=path, loop=True)
-                except Exception:
-                    pass
-            try:
-                return path
-            except Exception:
-                pass
+            if kind == "movie" or full_cg_is_video_path(path):
+                return full_cg_movie(path, size=size)
+            # 靜態：只回傳可當 image 的路徑／tag，絕不回傳 webm
+            if full_cg_is_video_path(path):
+                return full_cg_movie(path, size=size)
+            return path
+
         if placeholder:
             return Solid("#2a2a2a")
         return Solid("#2a2a2a")
 
     def full_cg_is_missing(name_or_entry):
-        name = full_cg_thumb_name(name_or_entry)
+        if isinstance(name_or_entry, dict):
+            if name_or_entry.get("kind") == "movie":
+                src = name_or_entry.get("src")
+                try:
+                    return not renpy.loadable(str(src))
+                except Exception:
+                    return True
+            name = full_cg_thumb_name(name_or_entry)
+        else:
+            name = name_or_entry
+            if full_cg_is_video_path(name):
+                try:
+                    return not renpy.loadable(str(name))
+                except Exception:
+                    return True
         return full_cg_find_asset(name) is None
 
     # ---------- catalog: all series ----------
@@ -496,11 +564,14 @@ screen full_cg_gallery():
                             hover_background "#404040"
                             action Function(full_cg_view, it)
 
-                            if it.get("missing") and it.get("kind") != "movie":
+                            # 影片：Movie 預覽（禁止當 Image 載入 webm）
+                            if it.get("kind") == "movie" or full_cg_is_video_path(it.get("src")):
+                                add full_cg_movie(it.get("src"), size=(320, 180))
+                            elif it.get("missing"):
                                 add Solid("#333333") xsize 320 ysize 180
                                 text "無圖資源" size 22 color "#888888" xalign 0.5 yalign 0.45
                             else:
-                                add full_cg_displayable(it["src"]):
+                                add full_cg_displayable(it, size=(320, 180)):
                                     xsize 320
                                     ysize 180
                                     fit "cover"
@@ -526,12 +597,10 @@ screen full_cg_viewer():
         background "#000000ee"
         action Function(full_cg_close_viewer)
 
-        if full_cg_view_kind == "movie" or (full_cg_view_src and str(full_cg_view_src).endswith((".webm", ".mp4"))):
-            add Movie(play=str(full_cg_view_src), loop=True):
+        if full_cg_view_kind == "movie" or full_cg_is_video_path(full_cg_view_src):
+            add full_cg_movie(full_cg_view_src, size=(1920, 1000)):
                 xalign 0.5
                 yalign 0.5
-                fit "contain"
-                xysize (1920, 1000)
         elif full_cg_is_missing(full_cg_view_src):
             vbox:
                 xalign 0.5
@@ -539,9 +608,9 @@ screen full_cg_viewer():
                 spacing 12
                 text "找不到對應圖片資源" size 36 color "#aaaaaa" xalign 0.5
                 text str(full_cg_view_src) size 24 color "#666666" xalign 0.5
-                text "（遊戲資料表有登錄，但封包內無此圖／未定義 image）" size 20 color "#555555" xalign 0.5
+                text "（資料表有登錄，但封包無此圖）" size 20 color "#555555" xalign 0.5
         else:
-            add full_cg_displayable(full_cg_view_src, placeholder=False):
+            add full_cg_displayable(full_cg_view_src, placeholder=True, size=(1920, 1000)):
                 xalign 0.5
                 yalign 0.5
                 fit "contain"
