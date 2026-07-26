@@ -354,9 +354,8 @@ init python:
         return res
 
     def full_cg_ensure_movie_channel(channel, volume=1.0):
-        """註冊影片 channel（獨立 sfx mixer，避免跟 BGM 搶／被一起靜音）。"""
+        """註冊影片 channel；framedrop 提升順暢度。"""
         try:
-            # 用 sfx：與 music BGM 分開，音量可獨立拉滿
             if not renpy.music.channel_defined(channel):
                 renpy.music.register_channel(
                     channel,
@@ -364,11 +363,10 @@ init python:
                     loop=True,
                     stop_on_mute=False,
                     movie=True,
-                    framedrop=False,
+                    framedrop=True,
                     force=True,
                 )
             renpy.music.set_volume(max(0.0, min(1.0, float(volume))), delay=0, channel=channel)
-            # 確保 sfx 混音器本身有聲
             try:
                 _preferences.set_volume("sfx", max(_preferences.get_volume("sfx"), 0.8))
             except Exception:
@@ -377,7 +375,7 @@ init python:
             pass
 
     def full_cg_movie(path, size=None, channel=None, audio=True):
-        """建立可預覽的 Movie（webm 內建音軌會走 channel 播出）。"""
+        """單一 Movie 播放（含音軌）。縮圖請勿呼叫。"""
         path = str(path).replace("\\", "/")
         if not path:
             return Solid("#1a1a2e")
@@ -388,15 +386,12 @@ init python:
             return Solid("#1a1a2e")
 
         if channel is None:
-            if audio:
-                channel = "full_cg_movie"
-            else:
-                stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-                channel = "fcg_" + "".join(ch if ch.isalnum() else "_" for ch in stem)[:40]
+            channel = "full_cg_movie"
 
         full_cg_ensure_movie_channel(channel, volume=(1.0 if audio else 0.0))
 
         try:
+            # loop=False 較省；圖鑑點開可重播
             if size:
                 return Movie(play=path, channel=channel, loop=True, size=size)
             return Movie(play=path, channel=channel, loop=True)
@@ -409,66 +404,50 @@ init python:
             return Solid("#1a1a2e")
 
     def full_cg_play_with_sound(path):
-        """全畫面播放：畫面 + 聲音。"""
+        """全畫面：只建一個 Movie，由 displayable 自己播（避免 double play 卡頓）。"""
         path = str(path).replace("\\", "/")
         ch = "full_cg_movie"
-        full_cg_ensure_movie_channel(ch, volume=1.0)
-        # 先停掉同 channel 殘留
         try:
             renpy.music.stop(channel=ch, fadeout=0.05)
         except Exception:
             pass
-        # Movie displayable 會在 show 時 play；再保險手動 play 一次以帶音
-        try:
-            renpy.music.play([path], channel=ch, loop=True)
-        except Exception:
-            try:
-                renpy.music.play(path, channel=ch, loop=True)
-            except Exception:
-                pass
+        full_cg_ensure_movie_channel(ch, volume=1.0)
         return full_cg_movie(path, size=(1920, 1000), channel=ch, audio=True)
 
     def full_cg_stop_sound():
         for ch in ("full_cg_movie", "movie"):
             try:
-                renpy.music.stop(channel=ch, fadeout=0.15)
+                renpy.music.stop(channel=ch, fadeout=0.1)
             except Exception:
                 pass
+
     def full_cg_displayable(name_or_entry, placeholder=True, size=None):
-        """
-        回傳可安全 add 的 displayable。
-        - 影片一律 Movie()
-        - 靜態圖用真實檔案路徑或 image tag
-        - 失敗用灰底 Solid（不觸發 Image not found）
-        """
+        """靜態圖用路徑；影片僅在大圖用 Movie。"""
         if isinstance(name_or_entry, dict):
             res = full_cg_resolve_entry(name_or_entry)
             if res:
                 kind, path = res
                 if kind == "movie" or full_cg_is_video_path(path):
-                    return full_cg_movie(path, size=size)
+                    # 縮圖不應走到這；大圖才 Movie
+                    return full_cg_movie(path, size=size, audio=True)
                 return path
-            if placeholder:
-                return Solid("#2a2a2a")
             return Solid("#2a2a2a")
 
         name = name_or_entry
         if full_cg_is_video_path(name):
-            return full_cg_movie(name, size=size)
+            return full_cg_movie(name, size=size, audio=True)
 
         found = full_cg_find_asset(name, prefer_image=True)
         if found:
             kind, path = found
             if kind == "movie" or full_cg_is_video_path(path):
-                return full_cg_movie(path, size=size)
+                return full_cg_movie(path, size=size, audio=True)
             return path
-
         return Solid("#2a2a2a")
 
     def full_cg_is_missing(name_or_entry):
         if isinstance(name_or_entry, dict):
-            res = full_cg_resolve_entry(name_or_entry)
-            return res is None
+            return full_cg_resolve_entry(name_or_entry) is None
         if full_cg_is_video_path(name_or_entry):
             try:
                 return not renpy.loadable(str(name_or_entry))
@@ -477,11 +456,16 @@ init python:
         return full_cg_find_asset(name_or_entry) is None
 
     # ---------- catalog: all series ----------
-    def full_cg_catalog():
+    _full_cg_catalog_cache = None
+
+    def full_cg_catalog(force=False):
         """
-        回傳 list of dict:
-          id, title, kind (image|movie), src (image name or movie path), tab, missing
+        回傳 list of dict（已解析；缺資源者不列入）。
         """
+        global _full_cg_catalog_cache
+        if _full_cg_catalog_cache is not None and not force:
+            return _full_cg_catalog_cache
+
         items = []
 
         # 1) 照片圖鑑
@@ -544,11 +528,12 @@ init python:
         except Exception:
             pass
 
-        # 4) 全部 movie/*.webm 劇情影片
+        # 4) movie/*.webm
         try:
-            for f in _full_cg_list_files():
-                fl = f.replace("\\", "/")
-                if fl.startswith("movie/") and fl.endswith((".webm", ".mp4")):
+            idx = full_cg_build_index()
+            for fl in idx.get("all", []):
+                fl = fl.replace("\\", "/")
+                if fl.startswith("movie/") and fl.lower().endswith((".webm", ".mp4")):
                     stem = fl.rsplit("/", 1)[-1].rsplit(".", 1)[0]
                     items.append({
                         "id": "movie:" + stem,
@@ -561,21 +546,26 @@ init python:
         except Exception:
             pass
 
-        # 精準解析每筆資源路徑
+        # 解析後：封包沒有資源的直接丟掉
+        valid = []
         for it in items:
-            full_cg_resolve_entry(it)
+            res = full_cg_resolve_entry(it)
+            if res is None:
+                continue
+            valid.append(it)
 
-        return items
+        _full_cg_catalog_cache = valid
+        return valid
 
     def full_cg_filtered():
         tab = getattr(store, "full_cg_tab", "picture") or "picture"
-        all_items = full_cg_catalog()
         out = []
-        for it in all_items:
+        for it in full_cg_catalog():
             if it["tab"] != tab:
                 continue
-            # 確保已解析
-            full_cg_resolve_entry(it)
+            # 雙重保險：無資源不顯示
+            if it.get("missing") or full_cg_resolve_entry(it) is None:
+                continue
             out.append(it)
         return out
 
@@ -782,7 +772,7 @@ screen full_cg_gallery():
                         ypadding 6
                         action Function(full_cg_set_tab, tab)
 
-            text "點縮圖開啟　·　缺圖會顯示灰底（不噴 Image not found）　·　方向鍵翻頁" size 18 color "#777777"
+            text "點縮圖開啟　·　僅顯示封包內找得到的資源　·　影片點進去才播放（較順暢）　·　方向鍵翻頁" size 18 color "#777777"
 
             $ _items = full_cg_page_items()
             if not _items:
@@ -806,25 +796,21 @@ screen full_cg_gallery():
                             hover_background "#404040"
                             action Function(full_cg_view, it)
 
-                            # 先精準解析
+                            # 縮圖：靜態圖直接顯示；影片只用靜態卡＋▶（不在列表播 12 支，才會順）
                             $ _res = full_cg_resolve_entry(it)
                             if _res and (_res[0] == "movie" or full_cg_is_video_path(_res[1])):
-                                add full_cg_movie(_res[1], size=(320, 180), audio=False)
-                                text "▶":
+                                add Solid("#1a1528") xsize 320 ysize 180
+                                text "▶ 影片":
                                     size 28
-                                    color "#ffffffaa"
+                                    color "#ffffff"
                                     xalign 0.5
-                                    yalign 0.4
+                                    yalign 0.42
                                     outlines [ (2, "#000000", 0, 0) ]
                             elif _res:
                                 add _res[1]:
                                     xsize 320
                                     ysize 180
                                     fit "cover"
-                            else:
-                                add Solid("#333333") xsize 320 ysize 180
-                                text "無圖資源" size 20 color "#888888" xalign 0.5 yalign 0.4
-                                text str(it.get("src") or "") size 12 color "#666666" xalign 0.5 yalign 0.6
 
                             frame:
                                 yalign 1.0
