@@ -4,7 +4,7 @@
   "name_en": "Full CG Unlock",
   "version": "1.0.0",
   "author": "Agent17-modload",
-  "description": "解鎖全部照片 CG，並在主選單／遊戲主介面新增「CG 圖鑑」按鈕可瀏覽選擇。不含劇情影片等其他收集。",
+  "description": "解鎖照片圖鑑；主介面「CG」開啟圖鑑，含照片／Nutflex劇集／直播／movie影片。缺圖顯示灰底不報錯。",
   "default_enabled": false,
   "requires_restart": false,
   "priority": 20
