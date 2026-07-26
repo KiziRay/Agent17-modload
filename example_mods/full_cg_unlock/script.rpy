@@ -154,8 +154,31 @@ init python:
             return None
         return entry
 
-    def full_cg_movie(path, size=None, channel=None):
-        """建立可預覽的 Movie（絕不把 webm 當 Image）。"""
+    def full_cg_ensure_movie_channel(channel, volume=1.0):
+        """註冊影片 channel（獨立 sfx mixer，避免跟 BGM 搶／被一起靜音）。"""
+        try:
+            # 用 sfx：與 music BGM 分開，音量可獨立拉滿
+            if not renpy.music.channel_defined(channel):
+                renpy.music.register_channel(
+                    channel,
+                    "sfx",
+                    loop=True,
+                    stop_on_mute=False,
+                    movie=True,
+                    framedrop=False,
+                    force=True,
+                )
+            renpy.music.set_volume(max(0.0, min(1.0, float(volume))), delay=0, channel=channel)
+            # 確保 sfx 混音器本身有聲
+            try:
+                _preferences.set_volume("sfx", max(_preferences.get_volume("sfx"), 0.8))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def full_cg_movie(path, size=None, channel=None, audio=True):
+        """建立可預覽的 Movie（webm 內建音軌會走 channel 播出）。"""
         path = str(path).replace("\\", "/")
         if not path:
             return Solid("#1a1a2e")
@@ -164,16 +187,21 @@ init python:
                 return Solid("#1a1a2e")
         except Exception:
             return Solid("#1a1a2e")
-        # 多個縮圖同時播時 channel 必須唯一
+
         if channel is None:
-            stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-            channel = "fcg_" + "".join(ch if ch.isalnum() else "_" for ch in stem)[:40]
+            if audio:
+                channel = "full_cg_movie"
+            else:
+                stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                channel = "fcg_" + "".join(ch if ch.isalnum() else "_" for ch in stem)[:40]
+
+        full_cg_ensure_movie_channel(channel, volume=(1.0 if audio else 0.0))
+
         try:
             if size:
                 return Movie(play=path, channel=channel, loop=True, size=size)
             return Movie(play=path, channel=channel, loop=True)
         except TypeError:
-            # 舊參數相容
             try:
                 return Movie(play=path, channel=channel, loop=True)
             except Exception:
@@ -181,6 +209,32 @@ init python:
         except Exception:
             return Solid("#1a1a2e")
 
+    def full_cg_play_with_sound(path):
+        """全畫面播放：畫面 + 聲音。"""
+        path = str(path).replace("\\", "/")
+        ch = "full_cg_movie"
+        full_cg_ensure_movie_channel(ch, volume=1.0)
+        # 先停掉同 channel 殘留
+        try:
+            renpy.music.stop(channel=ch, fadeout=0.05)
+        except Exception:
+            pass
+        # Movie displayable 會在 show 時 play；再保險手動 play 一次以帶音
+        try:
+            renpy.music.play([path], channel=ch, loop=True)
+        except Exception:
+            try:
+                renpy.music.play(path, channel=ch, loop=True)
+            except Exception:
+                pass
+        return full_cg_movie(path, size=(1920, 1000), channel=ch, audio=True)
+
+    def full_cg_stop_sound():
+        for ch in ("full_cg_movie", "movie"):
+            try:
+                renpy.music.stop(channel=ch, fadeout=0.15)
+            except Exception:
+                pass
     def full_cg_displayable(name_or_entry, placeholder=True, size=None):
         """
         回傳可安全 add 的 displayable。
@@ -374,9 +428,9 @@ init python:
                 renpy.hide_screen(scr)
             except Exception:
                 pass
-        # 停掉可能在播的影片
+        full_cg_stop_sound()
         try:
-            renpy.music.stop(channel="movie")
+            renpy.music.stop(channel="movie", fadeout=0.1)
         except Exception:
             pass
         renpy.restart_interaction()
@@ -395,8 +449,9 @@ init python:
             renpy.hide_screen("full_cg_viewer")
         except Exception:
             pass
+        full_cg_stop_sound()
         try:
-            renpy.music.stop(channel="movie")
+            renpy.music.stop(channel="movie", fadeout=0.1)
         except Exception:
             pass
         renpy.restart_interaction()
@@ -566,7 +621,14 @@ screen full_cg_gallery():
 
                             # 影片：Movie 預覽（禁止當 Image 載入 webm）
                             if it.get("kind") == "movie" or full_cg_is_video_path(it.get("src")):
-                                add full_cg_movie(it.get("src"), size=(320, 180))
+                                # 縮圖靜音預覽（多支同時播避免吵）
+                                add full_cg_movie(it.get("src"), size=(320, 180), audio=False)
+                                text "▶":
+                                    size 28
+                                    color "#ffffffaa"
+                                    xalign 0.5
+                                    yalign 0.4
+                                    outlines [ (2, "#000000", 0, 0) ]
                             elif it.get("missing"):
                                 add Solid("#333333") xsize 320 ysize 180
                                 text "無圖資源" size 22 color "#888888" xalign 0.5 yalign 0.45
@@ -598,7 +660,8 @@ screen full_cg_viewer():
         action Function(full_cg_close_viewer)
 
         if full_cg_view_kind == "movie" or full_cg_is_video_path(full_cg_view_src):
-            add full_cg_movie(full_cg_view_src, size=(1920, 1000)):
+            # 全畫面：畫面 + 聲音（webm 內建音軌）
+            add full_cg_play_with_sound(full_cg_view_src):
                 xalign 0.5
                 yalign 0.5
         elif full_cg_is_missing(full_cg_view_src):
