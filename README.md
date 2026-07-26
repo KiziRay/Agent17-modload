@@ -17,8 +17,7 @@ Agent17 **第三方模組載入器**與開發說明。
 ## 功能
 
 - 仍用官方 `Agent17.exe` 啟動（不需 BAT）
-- 主選單底部「模組」按鈕（不擋原版開始／讀取／設定）
-- 快捷鍵 **F8 / F9 / F10** 開啟模組管理
+- 預設**僅快捷鍵 F9** 開啟模組管理（無畫面按鈕，不擋原版 UI）
 - 掃描 `game/mods/<id>/`，介面開關，狀態可持久化
 
 ## 快速開始
@@ -26,7 +25,7 @@ Agent17 **第三方模組載入器**與開發說明。
 1. 從 [Patreon · HEXATAIL](https://www.patreon.com/cw/hexatail) 取得遊戲  
 2. 依 [docs/INSTALL.md](docs/INSTALL.md) 把 `loader/*.rpy` 放進 `game/`  
 3. （可選）複製 `example_mods/example_hello` 到 `game/mods/`  
-4. 啟動遊戲 → **F9** 或主選單「模組」
+4. 啟動遊戲 → 按 **F9** 開啟模組管理
 
 ## 倉庫結構
 

@@ -79,6 +79,6 @@ init python:
 
 ## 除錯
 
-1. 主選單底部「模組」或 **F9** 是否出現列表。
+1. 按 **F9** 是否出現模組列表。
 2. `mod.json` 的 `id` 是否與 `is_mod_enabled("...")` 一致。
 3. 看 `log.txt` / `traceback.txt`（遊戲根目錄）。

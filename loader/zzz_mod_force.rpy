@@ -1,23 +1,20 @@
 # SPDX-License-Identifier: MIT
-# Force mod entry UI onto Ren'Py built-in "top" layer.
-# Does not include any game content.
+# Force F9 hotkey screen onto Ren'Py "top" layer (no visible button).
 
 init 9999 python:
-    import os
-
     def _mod_force_top():
         try:
-            if not renpy.has_screen("mod_entry_button"):
+            if not renpy.has_screen("mod_entry_hotkey"):
                 return
-            if renpy.get_screen("mod_entry_button", layer="top") is None:
-                renpy.show_screen("mod_entry_button", _layer="top")
+            if renpy.get_screen("mod_entry_hotkey", layer="top") is None:
+                renpy.show_screen("mod_entry_hotkey", _layer="top")
         except Exception:
             pass
 
-    # Prefer manual show on top layer (avoid duplicate always_shown on screens layer)
     try:
         config.always_shown_screens = [
-            s for s in config.always_shown_screens if s != "mod_entry_button"
+            s for s in config.always_shown_screens
+            if s not in ("mod_entry_button", "mod_entry_hotkey")
         ]
     except Exception:
         pass
@@ -31,8 +28,8 @@ init 9999 python:
     if _mod_start not in config.start_callbacks:
         config.start_callbacks.append(_mod_start)
 
-    config.keymap["mod_open"] = ["K_F8", "K_F9", "K_F10"]
+    config.keymap["mod_open"] = ["K_F9"]
     try:
-        config.underlay.append(renpy.Keymap(mod_open=Function(ModOpenManager)))
+        config.underlay.append(renpy.Keymap(mod_open=Function(ModToggleManager)))
     except Exception:
         pass
