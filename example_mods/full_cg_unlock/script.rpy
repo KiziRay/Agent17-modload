@@ -342,17 +342,26 @@ init python:
         renpy.restart_interaction()
 
     def full_cg_show_entry_button():
+        """模組開啟就顯示，避免條件過嚴找不到按鈕。"""
         if not is_mod_enabled("full_cg_unlock"):
             return False
         for scr in ("mod_manager", "full_cg_gallery", "full_cg_viewer"):
             if renpy.get_screen(scr, layer="top") or renpy.get_screen(scr):
                 return False
-        if renpy.get_screen("main_menu") is not None:
-            if getattr(persistent, "select_language", False) and renpy.get_screen("language_screen") is None:
-                return True
-        if renpy.get_screen("home_ui_system_button") is not None:
-            return True
-        return False
+        return True
+
+    def full_cg_toggle_gallery():
+        """F10：開／關 CG 圖鑑。"""
+        if not is_mod_enabled("full_cg_unlock"):
+            try:
+                renpy.notify("請先在模組管理(F9)開啟「全 CG 解鎖」")
+            except Exception:
+                pass
+            return
+        if renpy.get_screen("full_cg_gallery", layer="top") or renpy.get_screen("full_cg_gallery"):
+            full_cg_close()
+        else:
+            full_cg_open()
 
     def full_cg_tab_label(tab):
         n = 0
