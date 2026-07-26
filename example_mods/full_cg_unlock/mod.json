@@ -1,0 +1,11 @@
+{
+  "id": "full_cg_unlock",
+  "name": "全 CG 解鎖（照片圖鑑）",
+  "name_en": "Full CG Unlock",
+  "version": "1.0.0",
+  "author": "Agent17-modload",
+  "description": "解鎖遊戲內全部「照片／CG 圖鑑」（TB_Picture）。開啟後進入遊戲或讀檔會自動補齊。不保證含影片／其他收集品。",
+  "default_enabled": false,
+  "requires_restart": false,
+  "priority": 20
+}

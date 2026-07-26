@@ -1,0 +1,11 @@
+{
+  "id": "tw_ui_lexicon",
+  "name": "繁中介面詞彙（台灣）",
+  "name_en": "TW UI Lexicon",
+  "version": "1.0.0",
+  "author": "Agent17-modload",
+  "description": "覆蓋／修正介面詞彙為台灣繁體用語（選單、確認框、常見 UI）。開啟後建議重啟一次。",
+  "default_enabled": true,
+  "requires_restart": true,
+  "priority": 10
+}

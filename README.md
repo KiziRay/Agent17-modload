@@ -24,7 +24,10 @@ Agent17 **第三方模組載入器**與開發說明。
 
 1. 從 [Patreon · HEXATAIL](https://www.patreon.com/cw/hexatail) 取得遊戲  
 2. 依 [docs/INSTALL.md](docs/INSTALL.md) 把 `loader/*.rpy` 放進 `game/`  
-3. （可選）複製 `example_mods/example_hello` 到 `game/mods/`  
+3. （可選）複製 `example_mods/*` 到 `game/mods/`  
+   - `example_hello` — 測試用提示  
+   - `tw_ui_lexicon` — 台灣繁中介面詞彙  
+   - `full_cg_unlock` — 全照片 CG 圖鑑解鎖  
 4. 啟動遊戲 → 按 **F9** 開啟模組管理
 
 ## 倉庫結構

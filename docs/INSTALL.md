@@ -21,13 +21,16 @@
    | `loader/mod_manager_ui.rpy` | `遊戲/game/mod_manager_ui.rpy` |
    | `loader/zzz_mod_force.rpy` | `遊戲/game/zzz_mod_force.rpy` |
 
-3. （可選）複製範例模組：
+3. （可選）複製範例模組到 `遊戲/game/mods/`：
 
-   ```
-   example_mods/example_hello/  →  遊戲/game/mods/example_hello/
-   ```
+   | 範例 | 用途 |
+   |------|------|
+   | `example_hello` | 測試載入器 |
+   | `tw_ui_lexicon` | 台灣繁中介面詞彙（預設建議開啟） |
+   | `full_cg_unlock` | 全照片 CG 圖鑑解鎖 |
 
 4. 只啟動官方遊戲執行檔（例如 `Agent17.exe`），**不需要**額外 BAT。
+5. 遊戲中按 **F9** → 開關模組。
 
 ## 如何開啟模組選單
 
