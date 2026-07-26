@@ -1,0 +1,23 @@
+# Game files (never commit)
+**/archive.rpa
+**/*.rpa
+**/Agent17.exe
+**/lib/
+**/renpy/
+**/saves/
+**/save/
+**/*.save
+**/log.txt
+**/traceback.txt
+**/_mod_ui_loaded.txt
+**/mods_state.json
+**/cache/
+**/*.rpyc
+**/*.rpyb
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

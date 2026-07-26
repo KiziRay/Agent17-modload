@@ -1,0 +1,11 @@
+{
+  "id": "example_hello",
+  "name": "範例：主選單提示",
+  "name_en": "Example Hello",
+  "version": "1.0.0",
+  "author": "Agent17-modload",
+  "description": "開啟後在主選單顯示一行提示，用來確認模組系統有運作。",
+  "default_enabled": false,
+  "requires_restart": false,
+  "priority": 999
+}
