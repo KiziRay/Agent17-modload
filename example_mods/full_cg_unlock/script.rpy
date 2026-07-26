@@ -374,8 +374,39 @@ init python:
         except Exception:
             pass
 
+    def full_cg_static_thumb(item):
+        """
+        列表縮圖：永遠靜態圖。
+        - 一般圖：解析後的圖片路徑
+        - 影片：同名 webp/png 海報；沒有則回 None（畫面用靜態卡）
+        """
+        res = full_cg_resolve_entry(item)
+        if not res:
+            return None
+        kind, path = res
+        if kind != "movie" and not full_cg_is_video_path(path):
+            return path
+        # 影片 → 找同名靜態圖
+        stem = str(path).replace("\\", "/").rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        extras = [stem, item.get("title"), item.get("id", "").split(":")[-1]]
+        still = full_cg_find_asset(stem, extra_keys=extras, prefer_image=True)
+        if still and still[0] != "movie" and not full_cg_is_video_path(still[1]):
+            return still[1]
+        # 常見海報路徑
+        for cand in (
+            "images/actor/act/tv/movie_" + stem + ".webp",
+            "images/item/movie_poster_" + stem + ".webp",
+            "images/" + stem + ".webp",
+        ):
+            try:
+                if renpy.loadable(cand):
+                    return cand
+            except Exception:
+                pass
+        return None
+
     def full_cg_movie(path, size=None, channel=None, audio=True):
-        """單一 Movie 播放（含音軌）。縮圖請勿呼叫。"""
+        """僅在點開後使用：循環播放 + 音軌。"""
         path = str(path).replace("\\", "/")
         if not path:
             return Solid("#1a1a2e")
@@ -391,20 +422,18 @@ init python:
         full_cg_ensure_movie_channel(channel, volume=(1.0 if audio else 0.0))
 
         try:
-            # loop=False 較省；圖鑑點開可重播
-            if size:
-                return Movie(play=path, channel=channel, loop=True, size=size)
+            # 不設 size 讓引擎自己縮放，較少卡頓；外層用 Transform
             return Movie(play=path, channel=channel, loop=True)
-        except TypeError:
+        except Exception:
             try:
+                if size:
+                    return Movie(play=path, channel=channel, loop=True, size=size)
                 return Movie(play=path, channel=channel, loop=True)
             except Exception:
                 return Solid("#1a1a2e")
-        except Exception:
-            return Solid("#1a1a2e")
 
     def full_cg_play_with_sound(path):
-        """全畫面：只建一個 Movie，由 displayable 自己播（避免 double play 卡頓）。"""
+        """全畫面循環播放（含聲音），並盡量提高幀率。"""
         path = str(path).replace("\\", "/")
         ch = "full_cg_movie"
         try:
@@ -412,7 +441,18 @@ init python:
         except Exception:
             pass
         full_cg_ensure_movie_channel(ch, volume=1.0)
-        return full_cg_movie(path, size=(1920, 1000), channel=ch, audio=True)
+        # 提高顯示幀率（播放期間）
+        try:
+            store._full_cg_old_framerate = _preferences.gl_framerate
+            _preferences.gl_framerate = None  # 不鎖幀
+        except Exception:
+            pass
+        try:
+            store._full_cg_old_powersave = _preferences.gl_powersave
+            _preferences.gl_powersave = False
+        except Exception:
+            pass
+        return Transform(full_cg_movie(path, channel=ch, audio=True), xysize=(1920, 1000), fit="contain")
 
     def full_cg_stop_sound():
         for ch in ("full_cg_movie", "movie"):
@@ -420,6 +460,17 @@ init python:
                 renpy.music.stop(channel=ch, fadeout=0.1)
             except Exception:
                 pass
+        # 還原幀率設定
+        try:
+            if hasattr(store, "_full_cg_old_framerate"):
+                _preferences.gl_framerate = store._full_cg_old_framerate
+        except Exception:
+            pass
+        try:
+            if hasattr(store, "_full_cg_old_powersave"):
+                _preferences.gl_powersave = store._full_cg_old_powersave
+        except Exception:
+            pass
 
     def full_cg_displayable(name_or_entry, placeholder=True, size=None):
         """靜態圖用路徑；影片僅在大圖用 Movie。"""
@@ -569,20 +620,6 @@ init python:
             out.append(it)
         return out
 
-    def full_cg_page_count():
-        n = len(full_cg_filtered())
-        if n <= 0:
-            return 1
-        return max(1, (n + FULL_CG_PER_PAGE - 1) // FULL_CG_PER_PAGE)
-
-    def full_cg_page_items():
-        items = full_cg_filtered()
-        p = int(getattr(store, "full_cg_page", 0) or 0)
-        p = max(0, min(p, full_cg_page_count() - 1))
-        store.full_cg_page = p
-        start = p * FULL_CG_PER_PAGE
-        return items[start : start + FULL_CG_PER_PAGE]
-
     def full_cg_set_tab(tab):
         store.full_cg_tab = tab
         store.full_cg_page = 0
@@ -592,6 +629,9 @@ init python:
         if not is_mod_enabled("full_cg_unlock"):
             return
         full_cg_try_unlock()
+        # 重建目錄快取，確保索引最新
+        global _full_cg_catalog_cache
+        _full_cg_catalog_cache = None
         store.full_cg_page = 0
         if not getattr(store, "full_cg_tab", None):
             store.full_cg_tab = "picture"
@@ -631,14 +671,6 @@ init python:
             renpy.music.stop(channel="movie", fadeout=0.1)
         except Exception:
             pass
-        renpy.restart_interaction()
-
-    def full_cg_page_prev():
-        store.full_cg_page = max(0, int(store.full_cg_page) - 1)
-        renpy.restart_interaction()
-
-    def full_cg_page_next():
-        store.full_cg_page = min(full_cg_page_count() - 1, int(store.full_cg_page) + 1)
         renpy.restart_interaction()
 
     def full_cg_show_entry_button():
@@ -721,8 +753,6 @@ screen full_cg_gallery():
     zorder 10040
 
     key "K_ESCAPE" action Function(full_cg_close)
-    key "K_LEFT" action Function(full_cg_page_prev)
-    key "K_RIGHT" action Function(full_cg_page_next)
 
     add "#000000dd"
 
@@ -741,18 +771,8 @@ screen full_cg_gallery():
             hbox:
                 spacing 16
                 text "CG 圖鑑" size 42 color "#ffffff"
-                text "第 " + str(int(full_cg_page) + 1) + " / " + str(full_cg_page_count()) + " 頁" size 22 color "#aaaaaa" yalign 0.5
-                null width 10
-                textbutton "上一頁":
-                    text_size 24
-                    text_color "#cccccc"
-                    text_hover_color "#ff6080"
-                    action Function(full_cg_page_prev)
-                textbutton "下一頁":
-                    text_size 24
-                    text_color "#cccccc"
-                    text_hover_color "#ff6080"
-                    action Function(full_cg_page_next)
+                text "共 " + str(len(full_cg_filtered())) + " 項　·　滑鼠滾輪／拖曳滑動" size 22 color "#aaaaaa" yalign 0.5
+                null width 20
                 textbutton "關閉":
                     text_size 24
                     text_color "#cccccc"
@@ -772,52 +792,65 @@ screen full_cg_gallery():
                         ypadding 6
                         action Function(full_cg_set_tab, tab)
 
-            text "點縮圖開啟　·　僅顯示封包內找得到的資源　·　影片點進去才播放（較順暢）　·　方向鍵翻頁" size 18 color "#777777"
+            text "列表僅靜態縮圖　·　點開才播放動畫／聲音（循環）　·　滾輪瀏覽全部" size 18 color "#777777"
 
-            $ _items = full_cg_page_items()
+            $ _items = full_cg_filtered()
             if not _items:
                 frame:
                     xfill True
                     ysize 700
                     background "#111111"
-                    text "此分類沒有項目" size 30 color "#888888" xalign 0.5 yalign 0.5
+                    text "此分類沒有可顯示的資源" size 30 color "#888888" xalign 0.5 yalign 0.5
             else:
-                vpgrid:
-                    cols 4
-                    spacing 14
-                    xalign 0.5
-                    ysize 720
+                # 可滑動顯示全部（不分頁）
+                viewport:
+                    id "full_cg_scroll"
+                    xfill True
+                    ysize 760
+                    scrollbars "vertical"
+                    mousewheel True
+                    draggable True
+                    pagekeys True
+                    side_yfill True
 
-                    for it in _items:
-                        button:
-                            xsize 320
-                            ysize 180
-                            background "#2a2a2a"
-                            hover_background "#404040"
-                            action Function(full_cg_view, it)
+                    vpgrid:
+                        cols 4
+                        spacing 14
+                        xalign 0.5
 
-                            # 縮圖：靜態圖直接顯示；影片只用靜態卡＋▶（不在列表播 12 支，才會順）
-                            $ _res = full_cg_resolve_entry(it)
-                            if _res and (_res[0] == "movie" or full_cg_is_video_path(_res[1])):
-                                add Solid("#1a1528") xsize 320 ysize 180
-                                text "▶ 影片":
-                                    size 28
-                                    color "#ffffff"
-                                    xalign 0.5
-                                    yalign 0.42
-                                    outlines [ (2, "#000000", 0, 0) ]
-                            elif _res:
-                                add _res[1]:
-                                    xsize 320
-                                    ysize 180
-                                    fit "cover"
+                        for it in _items:
+                            button:
+                                xsize 320
+                                ysize 180
+                                background "#2a2a2a"
+                                hover_background "#404040"
+                                action Function(full_cg_view, it)
 
-                            frame:
-                                yalign 1.0
-                                xfill True
-                                background "#000000bb"
-                                padding (6, 4)
-                                text it["title"] size 15 color "#ffffff" xalign 0.5
+                                # 永遠靜態縮圖（影片不播）
+                                $ _thumb = full_cg_static_thumb(it)
+                                if _thumb:
+                                    add _thumb:
+                                        xsize 320
+                                        ysize 180
+                                        fit "cover"
+                                else:
+                                    add Solid("#1a1528") xsize 320 ysize 180
+
+                                # 影片角標
+                                if it.get("kind") == "movie" or (it.get("_resolved") and it["_resolved"][0] == "movie"):
+                                    text "▶":
+                                        size 36
+                                        color "#ffffffdd"
+                                        xalign 0.5
+                                        yalign 0.4
+                                        outlines [ (2, "#000000", 0, 0) ]
+
+                                frame:
+                                    yalign 1.0
+                                    xfill True
+                                    background "#000000bb"
+                                    padding (6, 4)
+                                    text it["title"] size 15 color "#ffffff" xalign 0.5
 
 
 screen full_cg_viewer():
@@ -835,9 +868,10 @@ screen full_cg_viewer():
 
         $ _vsrc = full_cg_view_src
         $ _vkind = full_cg_view_kind
-        $ _vres = full_cg_find_asset(_vsrc, prefer_image=(_vkind != "movie")) if _vsrc else None
+        $ _vres = full_cg_find_asset(_vsrc, prefer_image=False) if (_vkind == "movie" or full_cg_is_video_path(_vsrc)) else full_cg_find_asset(_vsrc, prefer_image=True)
         if _vkind == "movie" or full_cg_is_video_path(_vsrc) or (_vres and _vres[0] == "movie"):
             $ _mpath = _vres[1] if _vres else _vsrc
+            # 點開後才循環播放＋聲音
             add full_cg_play_with_sound(_mpath):
                 xalign 0.5
                 yalign 0.5
@@ -852,9 +886,8 @@ screen full_cg_viewer():
                 xalign 0.5
                 yalign 0.5
                 spacing 12
-                text "找不到對應圖片資源" size 36 color "#aaaaaa" xalign 0.5
+                text "找不到對應資源" size 36 color "#aaaaaa" xalign 0.5
                 text str(_vsrc) size 24 color "#666666" xalign 0.5
-                text "（資料表有登錄，但封包無此圖）" size 20 color "#555555" xalign 0.5
 
     textbutton "關閉":
         xalign 0.98
